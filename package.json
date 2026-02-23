@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "vite preview --port ${PORT:-4173} --host 0.0.0.0"
+    "start": "serve dist -p ${PORT:-3000}"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.8",
@@ -21,6 +21,7 @@
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "serve": "^14.2.5",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
