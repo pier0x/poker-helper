@@ -1,2 +1,5 @@
 [variables]
 NIXPACKS_NODE_VERSION = "20"
+
+[start]
+cmd = "serve dist -p $PORT"
