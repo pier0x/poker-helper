@@ -55,59 +55,67 @@ export function assignChipValues(n: number, smallBlind: number, bigBlind: number
  * STEP 2: Given chip values, compute how many of each chip to give out
  * so the total equals buyIn exactly.
  *
- * Strategy: fix quantities for chips[1..n-1] (all except smallest),
- * then the smallest chip absorbs the exact remainder.
- * Works perfectly when all values are integer multiples of smallBlind
- * and buyIn is also a multiple of smallBlind.
+ * Strategy:
+ * - Fix q[0] (smallest chip) to a target quantity (15, 20, 25)
+ * - Assign chips[n-1..2] with small base quantities (1, 2, 3, 5…)
+ * - chip[1] (BB chip) absorbs whatever integer units remain
+ * - Any leftover units (parity) go back into chip[0]
+ *
+ * This guarantees q[0] stays in a sane poker range and the total is exact.
  */
 function computeQuantityCombinations(
   n: number,
   values: number[],
   buyIn: number
 ): { quantities: number[]; name: string }[] {
-  // Work in units of the smallest chip value to get clean integer math
   const v0 = values[0]
   const units = values.map(v => round2(v / v0))   // e.g. [1, 2, 5, 10, 20, 50]
-  const N = round2(buyIn / v0)                     // e.g. 200 for $20 buy-in with $0.10 SB
+  const N = Math.round(buyIn / v0)                 // e.g. 200 for $20 buy-in with $0.10 SB
 
-  // Each pattern specifies quantities for [largest chip, 2nd largest, 3rd largest, ...]
-  // i.e. chips[n-1], chips[n-2], chips[n-3], ...
-  // The smallest chip (chips[0]) is computed from the remainder.
-  const PATTERNS: { name: string; qtys: number[] }[] = [
-    { name: 'Balanced',    qtys: [1, 2, 4, 6, 10, 15, 25, 40] },
-    { name: 'Heavy Small', qtys: [1, 2, 3, 5,  8, 12, 20, 32] },
-    { name: 'Compact',     qtys: [1, 1, 2, 4,  7, 11, 18, 28] },
+  // Base quantities for chips[n-1], chips[n-2], ..., chips[2]
+  // (from largest down to the third-smallest, all fixed small numbers)
+  const BASE_QTYS_FROM_LARGEST = [1, 2, 3, 5, 8, 12, 20]
+
+  // Three combos differ only in how many of the smallest chip (chip[0]) we target
+  const COMBOS: { name: string; q0Target: number }[] = [
+    { name: 'Fewer Small',  q0Target: 15 },
+    { name: 'Balanced',     q0Target: 20 },
+    { name: 'More Small',   q0Target: 25 },
   ]
 
   const results: { quantities: number[]; name: string }[] = []
 
-  for (const { name, qtys } of PATTERNS) {
+  for (const { name, q0Target } of COMBOS) {
     const q = new Array(n).fill(0)
-    let unitsUsed = 0
 
-    // Assign from largest (n-1) down to chip[1]
-    for (let pos = 0; pos < n - 1; pos++) {
-      const chipIdx = n - 1 - pos
-      const baseQty = qtys[Math.min(pos, qtys.length - 1)]
-
-      // Don't use more units than budget (leave room for at least 1 of chip[0])
-      const maxByBudget = Math.floor((N - unitsUsed - 1) / units[chipIdx])
-      const qty = Math.max(1, Math.min(baseQty, maxByBudget))
-
-      q[chipIdx] = qty
-      unitsUsed += qty * units[chipIdx]
-
-      if (unitsUsed >= N - 1) break
-    }
-
-    // Smallest chip takes the exact remainder
-    const remaining = round2(N - unitsUsed)
+    // Reserve q0Target units for chip[0]
+    let remaining = N - q0Target
     if (remaining <= 0) continue
-    q[0] = Math.round(remaining) // should already be integer if values are nice multiples
 
-    // Sanity check: total must equal buyIn
-    const actualUnits = q.reduce((sum, qty, i) => sum + qty * units[i], 0)
-    if (Math.abs(actualUnits - N) > 0.01) continue
+    // Assign chips[n-1] down to chips[2] with base quantities
+    let valid = true
+    for (let pos = 0; pos < n - 2; pos++) {        // chips[n-1]..chips[2]
+      const chipIdx = n - 1 - pos
+      const baseQty = BASE_QTYS_FROM_LARGEST[Math.min(pos, BASE_QTYS_FROM_LARGEST.length - 1)]
+      const maxQty  = Math.floor((remaining - 1) / units[chipIdx])  // leave ≥1 unit for chip[1]
+      if (maxQty <= 0) { valid = false; break }
+      const qty = Math.min(baseQty, maxQty)
+      q[chipIdx] = qty
+      remaining -= qty * units[chipIdx]
+    }
+    if (!valid || remaining <= 0) continue
+
+    // chip[1] (BB chip) takes as many as will fit
+    q[1] = Math.floor(remaining / units[1])
+    remaining -= q[1] * units[1]
+
+    // chip[0] gets the target plus any leftover (should be 0 for nice multiples)
+    q[0] = q0Target + Math.round(remaining)
+    if (q[0] <= 0 || q[1] <= 0) continue
+
+    // Verify exact total
+    const totalUnits = q.reduce((sum, qty, i) => sum + qty * units[i], 0)
+    if (Math.abs(totalUnits - N) > 0.01) continue
 
     results.push({ quantities: q, name })
   }
