@@ -5,19 +5,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { calculateCombinations, type Combination } from '@/lib/algorithm'
+import { calculateCombinations, assignChipValues, type Combination } from '@/lib/algorithm'
 
 const DEFAULT_CHIPS = [1, 5, 25, 100, 500, 1000]
 const DEFAULT_BUY_IN = 20
+const DEFAULT_SB = 0.10
+const DEFAULT_BB = 0.20
 
 function formatDollar(amount: number): string {
-  if (amount < 1) return `$${amount.toFixed(2)}`
   if (Number.isInteger(amount)) return `$${amount}`
   return `$${amount.toFixed(2)}`
 }
 
 function CombinationCard({ combo, index }: { combo: Combination; index: number }) {
   const [expanded, setExpanded] = useState(true)
+  const isExact = Math.abs(combo.actualTotal - combo.targetTotal) < 0.01
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -27,7 +30,7 @@ function CombinationCard({ combo, index }: { combo: Combination; index: number }
             <CardTitle className="text-base">{combo.name}</CardTitle>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-green-600">
+            <span className={`text-sm font-semibold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
               {formatDollar(combo.actualTotal)}
             </span>
             <Button
@@ -44,6 +47,7 @@ function CombinationCard({ combo, index }: { combo: Combination; index: number }
           {combo.allocations.reduce((s, a) => s + a.quantity, 0)} chips total
         </CardDescription>
       </CardHeader>
+
       {expanded && (
         <CardContent>
           <div className="overflow-x-auto">
@@ -51,8 +55,8 @@ function CombinationCard({ combo, index }: { combo: Combination; index: number }
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className="pb-2 text-left font-medium text-slate-500">Chip</th>
+                  <th className="pb-2 text-right font-medium text-slate-500">Worth</th>
                   <th className="pb-2 text-right font-medium text-slate-500">Qty</th>
-                  <th className="pb-2 text-right font-medium text-slate-500">Value each</th>
                   <th className="pb-2 text-right font-medium text-slate-500">Subtotal</th>
                 </tr>
               </thead>
@@ -60,8 +64,8 @@ function CombinationCard({ combo, index }: { combo: Combination; index: number }
                 {combo.allocations.map((alloc, i) => (
                   <tr key={i} className="border-b border-slate-50 last:border-0">
                     <td className="py-2 font-mono font-medium">{alloc.denomination}</td>
-                    <td className="py-2 text-right text-slate-700">{alloc.quantity}×</td>
                     <td className="py-2 text-right text-slate-700">{formatDollar(alloc.valuePerChip)}</td>
+                    <td className="py-2 text-right text-slate-700">{alloc.quantity}×</td>
                     <td className="py-2 text-right font-medium">{formatDollar(alloc.totalValue)}</td>
                   </tr>
                 ))}
@@ -69,7 +73,7 @@ function CombinationCard({ combo, index }: { combo: Combination; index: number }
               <tfoot>
                 <tr>
                   <td colSpan={3} className="pt-3 text-right font-semibold text-slate-700">Total</td>
-                  <td className="pt-3 text-right font-bold text-green-600">
+                  <td className={`pt-3 text-right font-bold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
                     {formatDollar(combo.actualTotal)}
                   </td>
                 </tr>
@@ -86,7 +90,10 @@ export default function App() {
   const [chipInput, setChipInput] = useState('')
   const [chips, setChips] = useState<number[]>(DEFAULT_CHIPS)
   const [buyIn, setBuyIn] = useState<string>(String(DEFAULT_BUY_IN))
+  const [smallBlind, setSmallBlind] = useState<string>(String(DEFAULT_SB))
+  const [bigBlind, setBigBlind] = useState<string>(String(DEFAULT_BB))
   const [combinations, setCombinations] = useState<Combination[]>([])
+  const [chipValues, setChipValues] = useState<number[]>([])
   const [calculated, setCalculated] = useState(false)
 
   function addChip() {
@@ -109,32 +116,52 @@ export default function App() {
 
   function handleCalculate() {
     const buyInNum = parseFloat(buyIn)
-    if (isNaN(buyInNum) || buyInNum <= 0 || chips.length === 0) return
-    const result = calculateCombinations(chips, buyInNum)
+    const sbNum = parseFloat(smallBlind)
+    const bbNum = parseFloat(bigBlind)
+    if (isNaN(buyInNum) || buyInNum <= 0) return
+    if (isNaN(sbNum) || sbNum <= 0) return
+    if (isNaN(bbNum) || bbNum <= sbNum) return
+    if (chips.length === 0) return
+
+    const sorted = [...chips].sort((a, b) => a - b)
+    const values = assignChipValues(sorted.length, sbNum, bbNum)
+    setChipValues(values)
+
+    const result = calculateCombinations(chips, buyInNum, sbNum, bbNum)
     setCombinations(result)
     setCalculated(true)
   }
 
   const buyInNum = parseFloat(buyIn)
-  const isValid = chips.length > 0 && !isNaN(buyInNum) && buyInNum > 0
+  const sbNum = parseFloat(smallBlind)
+  const bbNum = parseFloat(bigBlind)
+  const isValid =
+    chips.length > 0 &&
+    !isNaN(buyInNum) && buyInNum > 0 &&
+    !isNaN(sbNum) && sbNum > 0 &&
+    !isNaN(bbNum) && bbNum > sbNum
+
+  const sortedChips = [...chips].sort((a, b) => a - b)
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-2xl px-4 py-10">
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Poker Chip Calculator</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Enter your chip denominations and buy-in to get chip distributions.
+            Set your blinds and buy-in to get exact chip distributions.
           </p>
         </div>
 
         {/* Input Card */}
         <Card className="mb-6">
           <CardContent className="pt-6 space-y-5">
+
             {/* Chip denominations */}
             <div className="space-y-2">
-              <Label>Chip denominations</Label>
+              <Label>Chip denominations in your set</Label>
               <div className="flex gap-2">
                 <Input
                   type="number"
@@ -147,12 +174,12 @@ export default function App() {
                 />
                 <Button variant="outline" size="sm" onClick={addChip}>
                   <Plus className="h-4 w-4" />
-                  Add chip
+                  Add
                 </Button>
               </div>
               {chips.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {chips.map(chip => (
+                  {sortedChips.map(chip => (
                     <Badge
                       key={chip}
                       variant="secondary"
@@ -173,11 +200,48 @@ export default function App() {
               )}
             </div>
 
+            {/* Blinds row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sb">Small Blind ($)</Label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-slate-400">$</span>
+                  <Input
+                    id="sb"
+                    type="number"
+                    placeholder="0.10"
+                    value={smallBlind}
+                    onChange={e => { setSmallBlind(e.target.value); setCalculated(false) }}
+                    min="0"
+                    step="any"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bb">Big Blind ($)</Label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-slate-400">$</span>
+                  <Input
+                    id="bb"
+                    type="number"
+                    placeholder="0.20"
+                    value={bigBlind}
+                    onChange={e => { setBigBlind(e.target.value); setCalculated(false) }}
+                    min="0"
+                    step="any"
+                  />
+                </div>
+                {!isNaN(sbNum) && !isNaN(bbNum) && bbNum <= sbNum && bigBlind !== '' && (
+                  <p className="text-xs text-red-500">Big blind must be greater than small blind.</p>
+                )}
+              </div>
+            </div>
+
             {/* Buy-in */}
             <div className="space-y-2">
-              <Label htmlFor="buyin">Buy-in amount ($)</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">$</span>
+              <Label htmlFor="buyin">Buy-in per player ($)</Label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm text-slate-400">$</span>
                 <Input
                   id="buyin"
                   type="number"
@@ -198,7 +262,29 @@ export default function App() {
           </CardContent>
         </Card>
 
-        {/* Results */}
+        {/* Chip value assignment (Step 1 result) */}
+        {calculated && chipValues.length > 0 && (
+          <Card className="mb-4 border-slate-200 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-slate-700">Chip values (based on your blinds)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {sortedChips.map((chip, i) => (
+                  <div key={chip} className="flex items-center gap-1.5 rounded-md border border-slate-100 bg-slate-50 px-3 py-1.5 text-sm">
+                    <span className="font-mono font-medium text-slate-800">{chip}</span>
+                    <span className="text-slate-400">=</span>
+                    <span className="font-semibold text-slate-900">{formatDollar(chipValues[i])}</span>
+                    {i === 0 && <span className="text-xs text-slate-400">(SB)</span>}
+                    {i === 1 && <span className="text-xs text-slate-400">(BB)</span>}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Distribution options (Step 2 results) */}
         {calculated && combinations.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-baseline justify-between">
@@ -210,14 +296,17 @@ export default function App() {
             {combinations.map((combo, i) => (
               <CombinationCard key={combo.id} combo={combo} index={i} />
             ))}
-            <p className="text-xs text-slate-400 text-center pt-2">
-              Smallest chip value is adjusted slightly so each distribution totals exactly {formatDollar(buyInNum)}.
-            </p>
           </div>
         )}
 
-        {calculated && chips.length === 0 && (
-          <p className="text-sm text-slate-500 text-center">Add at least one chip denomination to calculate.</p>
+        {calculated && combinations.length === 0 && (
+          <Card className="border-amber-100 bg-amber-50">
+            <CardContent className="pt-6">
+              <p className="text-sm text-amber-700">
+                Couldn't find valid distributions with these settings. Try adjusting the buy-in or blinds.
+              </p>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
