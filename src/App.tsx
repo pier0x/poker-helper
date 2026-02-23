@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Plus, Calculator } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,24 +17,66 @@ function formatDollar(amount: number): string {
   return `$${amount.toFixed(2)}`
 }
 
+interface EditableRow {
+  denomination: number
+  quantity: string      // string so input can be mid-edit
+  valuePerChip: string  // string so input can be mid-edit
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100
+}
+
 function CombinationCard({ combo }: { combo: Combination }) {
-  const isExact = Math.abs(combo.actualTotal - combo.targetTotal) < 0.01
+  const [rows, setRows] = useState<EditableRow[]>(() =>
+    combo.allocations.map(a => ({
+      denomination: a.denomination,
+      quantity: String(a.quantity),
+      valuePerChip: String(a.valuePerChip),
+    }))
+  )
+
+  // Re-sync if combo changes (new calculation)
+  useEffect(() => {
+    setRows(combo.allocations.map(a => ({
+      denomination: a.denomination,
+      quantity: String(a.quantity),
+      valuePerChip: String(a.valuePerChip),
+    })))
+  }, [combo])
+
+  function updateRow(i: number, field: 'quantity' | 'valuePerChip', value: string) {
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r))
+  }
+
+  const parsed = rows.map(r => ({
+    denomination: r.denomination,
+    quantity: Math.max(0, parseInt(r.quantity) || 0),
+    valuePerChip: Math.max(0, parseFloat(r.valuePerChip) || 0),
+  }))
+
+  const actualTotal = round2(parsed.reduce((s, r) => s + r.quantity * r.valuePerChip, 0))
+  const totalChips  = parsed.reduce((s, r) => s + r.quantity, 0)
+  const diff        = round2(actualTotal - combo.targetTotal)
+  const isExact     = Math.abs(diff) < 0.01
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">Chip distribution</CardTitle>
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-semibold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
-              {formatDollar(combo.actualTotal)}
-            </span>
-          </div>
+          <span className={`text-sm font-semibold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
+            {formatDollar(actualTotal)}
+            {!isExact && (
+              <span className="ml-1 text-xs font-normal">
+                ({diff > 0 ? '+' : ''}{formatDollar(diff)} vs target)
+              </span>
+            )}
+          </span>
         </div>
-        <CardDescription>
-          {combo.allocations.reduce((s, a) => s + a.quantity, 0)} chips per player
-        </CardDescription>
+        <CardDescription>{totalChips} chips per player</CardDescription>
       </CardHeader>
+
       <CardContent>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -47,25 +89,56 @@ function CombinationCard({ combo }: { combo: Combination }) {
               </tr>
             </thead>
             <tbody>
-              {combo.allocations.map((alloc, i) => (
-                <tr key={i} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2 font-mono font-medium">{alloc.denomination}</td>
-                  <td className="py-2 text-right text-slate-700">{formatDollar(alloc.valuePerChip)}</td>
-                  <td className="py-2 text-right text-slate-700">{alloc.quantity}×</td>
-                  <td className="py-2 text-right font-medium">{formatDollar(alloc.totalValue)}</td>
-                </tr>
-              ))}
+              {rows.map((row, i) => {
+                const qty = Math.max(0, parseInt(row.quantity) || 0)
+                const val = Math.max(0, parseFloat(row.valuePerChip) || 0)
+                const subtotal = round2(qty * val)
+                return (
+                  <tr key={row.denomination} className="border-b border-slate-50 last:border-0">
+                    <td className="py-1.5 font-mono font-medium">{row.denomination}</td>
+                    <td className="py-1.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-slate-400 text-xs">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={row.valuePerChip}
+                          onChange={e => updateRow(i, 'valuePerChip', e.target.value)}
+                          className="w-20 rounded border border-slate-200 bg-white px-2 py-0.5 text-right text-slate-700 focus:border-slate-400 focus:outline-none"
+                        />
+                      </div>
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={row.quantity}
+                        onChange={e => updateRow(i, 'quantity', e.target.value)}
+                        className="w-16 rounded border border-slate-200 bg-white px-2 py-0.5 text-right text-slate-700 focus:border-slate-400 focus:outline-none"
+                      />
+                    </td>
+                    <td className="py-1.5 text-right font-medium">{formatDollar(subtotal)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
             <tfoot>
               <tr>
                 <td colSpan={3} className="pt-3 text-right font-semibold text-slate-700">Total</td>
                 <td className={`pt-3 text-right font-bold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
-                  {formatDollar(combo.actualTotal)}
+                  {formatDollar(actualTotal)}
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
+        {!isExact && (
+          <p className="mt-3 text-xs text-amber-600 bg-amber-50 rounded-md px-3 py-2">
+            Total is {formatDollar(Math.abs(diff))} {diff > 0 ? 'above' : 'below'} the {formatDollar(combo.targetTotal)} target.
+          </p>
+        )}
       </CardContent>
     </Card>
   )
