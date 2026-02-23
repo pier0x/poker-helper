@@ -147,37 +147,15 @@ function computeQuantityCombinations(
     Math.max(3, Math.round(N2 * 0.30)),
   ]
 
-  const NAMES = ['Option 1', 'Option 2', 'Option 3']
-  const results: { quantities: number[]; name: string }[] = []
+  // Generate a single balanced distribution (use the middle target for each group)
+  const g1Qtys = solveGroup(g1Size, g1Values, half, g1Targets[1])
+  const g2Qtys = g2Size > 0
+    ? solveGroup(g2Size, g2Values, half, g2Targets[1])
+    : []
 
-  for (let i = 0; i < 3; i++) {
-    // Try each g1 target, fall back if invalid
-    let g1Qtys: number[] | null = null
-    for (let t = i; t < g1Targets.length + i; t++) {
-      g1Qtys = solveGroup(g1Size, g1Values, half, g1Targets[t % g1Targets.length])
-      if (g1Qtys) break
-    }
+  if (!g1Qtys || !g2Qtys) return []
 
-    let g2Qtys: number[] | null = null
-    if (g2Size > 0) {
-      for (let t = i; t < g2Targets.length + i; t++) {
-        g2Qtys = solveGroup(g2Size, g2Values, half, g2Targets[t % g2Targets.length])
-        if (g2Qtys) break
-      }
-    } else {
-      g2Qtys = []
-    }
-
-    if (!g1Qtys || !g2Qtys) continue
-
-    const allQtys = [...g1Qtys, ...g2Qtys]
-    results.push({ quantities: allQtys, name: NAMES[i] })
-  }
-
-  // Deduplicate
-  return results.filter((r, i) =>
-    results.findIndex(s => s.quantities.every((v, j) => v === r.quantities[j])) === i
-  )
+  return [{ quantities: [...g1Qtys, ...g2Qtys], name: 'Recommended' }]
 }
 
 export function calculateCombinations(

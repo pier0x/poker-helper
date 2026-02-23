@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Plus, Calculator, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Plus, Calculator } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,71 +17,56 @@ function formatDollar(amount: number): string {
   return `$${amount.toFixed(2)}`
 }
 
-function CombinationCard({ combo, index }: { combo: Combination; index: number }) {
-  const [expanded, setExpanded] = useState(true)
+function CombinationCard({ combo }: { combo: Combination }) {
   const isExact = Math.abs(combo.actualTotal - combo.targetTotal) < 0.01
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">#{index + 1}</Badge>
-            <CardTitle className="text-base">{combo.name}</CardTitle>
-          </div>
+          <CardTitle className="text-base">Chip distribution</CardTitle>
           <div className="flex items-center gap-2">
             <span className={`text-sm font-semibold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
               {formatDollar(combo.actualTotal)}
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setExpanded(e => !e)}
-            >
-              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
           </div>
         </div>
         <CardDescription>
-          {combo.allocations.reduce((s, a) => s + a.quantity, 0)} chips total
+          {combo.allocations.reduce((s, a) => s + a.quantity, 0)} chips per player
         </CardDescription>
       </CardHeader>
-
-      {expanded && (
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="pb-2 text-left font-medium text-slate-500">Chip</th>
-                  <th className="pb-2 text-right font-medium text-slate-500">Worth</th>
-                  <th className="pb-2 text-right font-medium text-slate-500">Qty</th>
-                  <th className="pb-2 text-right font-medium text-slate-500">Subtotal</th>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100">
+                <th className="pb-2 text-left font-medium text-slate-500">Chip</th>
+                <th className="pb-2 text-right font-medium text-slate-500">Worth</th>
+                <th className="pb-2 text-right font-medium text-slate-500">Qty</th>
+                <th className="pb-2 text-right font-medium text-slate-500">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {combo.allocations.map((alloc, i) => (
+                <tr key={i} className="border-b border-slate-50 last:border-0">
+                  <td className="py-2 font-mono font-medium">{alloc.denomination}</td>
+                  <td className="py-2 text-right text-slate-700">{formatDollar(alloc.valuePerChip)}</td>
+                  <td className="py-2 text-right text-slate-700">{alloc.quantity}×</td>
+                  <td className="py-2 text-right font-medium">{formatDollar(alloc.totalValue)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {combo.allocations.map((alloc, i) => (
-                  <tr key={i} className="border-b border-slate-50 last:border-0">
-                    <td className="py-2 font-mono font-medium">{alloc.denomination}</td>
-                    <td className="py-2 text-right text-slate-700">{formatDollar(alloc.valuePerChip)}</td>
-                    <td className="py-2 text-right text-slate-700">{alloc.quantity}×</td>
-                    <td className="py-2 text-right font-medium">{formatDollar(alloc.totalValue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={3} className="pt-3 text-right font-semibold text-slate-700">Total</td>
-                  <td className={`pt-3 text-right font-bold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
-                    {formatDollar(combo.actualTotal)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </CardContent>
-      )}
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3} className="pt-3 text-right font-semibold text-slate-700">Total</td>
+                <td className={`pt-3 text-right font-bold ${isExact ? 'text-green-600' : 'text-amber-600'}`}>
+                  {formatDollar(combo.actualTotal)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </CardContent>
     </Card>
   )
 }
@@ -287,15 +272,10 @@ export default function App() {
         {/* Distribution options (Step 2 results) */}
         {calculated && combinations.length > 0 && (
           <div className="space-y-4">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-base font-semibold text-slate-800">
-                Distributions for {formatDollar(buyInNum)} buy-in
-              </h2>
-              <span className="text-xs text-slate-400">{combinations.length} options</span>
-            </div>
-            {combinations.map((combo, i) => (
-              <CombinationCard key={combo.id} combo={combo} index={i} />
-            ))}
+            <h2 className="text-base font-semibold text-slate-800">
+              Distribution for {formatDollar(buyInNum)} buy-in
+            </h2>
+            <CombinationCard combo={combinations[0]} />
           </div>
         )}
 
