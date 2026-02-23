@@ -17,15 +17,13 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-// Nice multiples to use for chip values (as multipliers of smallBlind)
-// e.g. SB=0.10 → [0.10, 0.20, 0.50, 1.00, 2.00, 5.00, 10.00, ...]
 const NICE_MULTIPLIERS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
 
 /**
  * STEP 1: Assign a dollar value to each chip position.
- * - Chip 0 (smallest) = smallBlind
- * - Chip 1            = bigBlind
- * - Chip 2..n-1       = next nice multiples of smallBlind after bigBlind
+ * Chip 0 (smallest) = smallBlind
+ * Chip 1            = bigBlind
+ * Chip 2..n-1       = next nice multiples of smallBlind
  */
 export function assignChipValues(n: number, smallBlind: number, bigBlind: number): number[] {
   if (n === 0) return []
@@ -41,86 +39,145 @@ export function assignChipValues(n: number, smallBlind: number, bigBlind: number
       values.push(next)
       prev = next
     } else {
-      // Fallback: keep doubling
       const fallback = round2(prev * 2)
       values.push(fallback)
       prev = fallback
     }
   }
-
   return values
 }
 
 /**
- * STEP 2: Given chip values, compute how many of each chip to give out
- * so the total equals buyIn exactly.
+ * Solve for quantities within a single group of chips to hit a target.
  *
  * Strategy:
- * - Fix q[0] (smallest chip) to a target quantity (15, 20, 25)
- * - Assign chips[n-1..2] with small base quantities (1, 2, 3, 5…)
- * - chip[1] (BB chip) absorbs whatever integer units remain
- * - Any leftover units (parity) go back into chip[0]
+ * - Fix how many of the smallest chip (q0Target units)
+ * - Assign chips[m-1..2] with reasonable base quantities
+ * - chip[1] absorbs the remainder (acts as "change-maker" within the group)
  *
- * This guarantees q[0] stays in a sane poker range and the total is exact.
+ * Returns null if no valid distribution found.
+ */
+function solveGroup(
+  m: number,
+  values: number[],
+  target: number,
+  q0Target: number
+): number[] | null {
+  if (m === 0) return []
+  if (m === 1) {
+    const qty = Math.round(target / values[0])
+    return qty > 0 ? [qty] : null
+  }
+
+  const v0 = values[0]
+  const units = values.map(v => round2(v / v0))
+  const N = Math.round(target / v0)
+
+  if (q0Target >= N) return null
+
+  const q = new Array(m).fill(0)
+  let remaining = N - q0Target
+
+  // Assign chips[m-1] down to chips[2]
+  // Base quantity: how much of the remaining budget should this chip cover
+  // Use ~1/(pos+2) of remaining for each chip (gives decreasing coverage)
+  for (let pos = 0; pos < m - 2; pos++) {
+    const chipIdx = m - 1 - pos
+    const share = remaining / (m - 1 - pos)          // equal share of what's left
+    const idealQty = Math.round(share / units[chipIdx])
+    const maxQty = Math.floor((remaining - 1) / units[chipIdx])  // leave ≥1 unit for chip[1]
+    const qty = Math.max(1, Math.min(idealQty, maxQty))
+    q[chipIdx] = qty
+    remaining -= qty * units[chipIdx]
+    if (remaining <= 0) return null
+  }
+
+  // chip[1] absorbs whatever units remain
+  q[1] = Math.floor(remaining / units[1])
+  remaining -= q[1] * units[1]
+
+  // chip[0] gets q0Target + any fractional leftover
+  q[0] = q0Target + Math.round(remaining)
+
+  if (q[0] <= 0 || q[1] <= 0) return null
+
+  // Verify exact total
+  const totalUnits = q.reduce((s, qty, i) => s + qty * units[i], 0)
+  if (Math.abs(totalUnits - N) > 0.01) return null
+
+  return q
+}
+
+/**
+ * STEP 2: Split chips into two halves; each half covers buyIn/2.
+ *
+ * Group 1 (small chips, lower half): cheap chips used for change/blinds
+ * Group 2 (large chips, upper half): stack chips with higher individual value
+ *
+ * For each group we generate 3 variants by varying the q0Target.
  */
 function computeQuantityCombinations(
   n: number,
   values: number[],
   buyIn: number
 ): { quantities: number[]; name: string }[] {
-  const v0 = values[0]
-  const units = values.map(v => round2(v / v0))   // e.g. [1, 2, 5, 10, 20, 50]
-  const N = Math.round(buyIn / v0)                 // e.g. 200 for $20 buy-in with $0.10 SB
+  const half = buyIn / 2
 
-  // Base quantities for chips[n-1], chips[n-2], ..., chips[2]
-  // (from largest down to the third-smallest, all fixed small numbers)
-  const BASE_QTYS_FROM_LARGEST = [1, 2, 3, 5, 8, 12, 20]
+  const g1Size = Math.ceil(n / 2)   // small chips group (may be larger half for odd n)
+  const g2Size = n - g1Size          // large chips group
 
-  // Three combos differ only in how many of the smallest chip (chip[0]) we target
-  const COMBOS: { name: string; q0Target: number }[] = [
-    { name: 'Fewer Small',  q0Target: 15 },
-    { name: 'Balanced',     q0Target: 20 },
-    { name: 'More Small',   q0Target: 25 },
+  const g1Values = values.slice(0, g1Size)
+  const g2Values = values.slice(g1Size)
+
+  // For group 1 (small value chips): q0 targets are meaningful fractions of N1
+  const v1_0 = g1Values[0]
+  const N1 = Math.round(half / v1_0)
+  const g1Targets = [
+    Math.max(3, Math.round(N1 * 0.15)),
+    Math.max(4, Math.round(N1 * 0.20)),
+    Math.max(5, Math.round(N1 * 0.25)),
   ]
 
+  // For group 2 (large value chips): q0 targets are much smaller
+  const v2_0 = g2Values.length > 0 ? g2Values[0] : 1
+  const N2 = Math.round(half / v2_0)
+  const g2Targets = [
+    Math.max(1, Math.round(N2 * 0.10)),
+    Math.max(2, Math.round(N2 * 0.20)),
+    Math.max(3, Math.round(N2 * 0.30)),
+  ]
+
+  const NAMES = ['Option 1', 'Option 2', 'Option 3']
   const results: { quantities: number[]; name: string }[] = []
 
-  for (const { name, q0Target } of COMBOS) {
-    const q = new Array(n).fill(0)
-
-    // Reserve q0Target units for chip[0]
-    let remaining = N - q0Target
-    if (remaining <= 0) continue
-
-    // Assign chips[n-1] down to chips[2] with base quantities
-    let valid = true
-    for (let pos = 0; pos < n - 2; pos++) {        // chips[n-1]..chips[2]
-      const chipIdx = n - 1 - pos
-      const baseQty = BASE_QTYS_FROM_LARGEST[Math.min(pos, BASE_QTYS_FROM_LARGEST.length - 1)]
-      const maxQty  = Math.floor((remaining - 1) / units[chipIdx])  // leave ≥1 unit for chip[1]
-      if (maxQty <= 0) { valid = false; break }
-      const qty = Math.min(baseQty, maxQty)
-      q[chipIdx] = qty
-      remaining -= qty * units[chipIdx]
+  for (let i = 0; i < 3; i++) {
+    // Try each g1 target, fall back if invalid
+    let g1Qtys: number[] | null = null
+    for (let t = i; t < g1Targets.length + i; t++) {
+      g1Qtys = solveGroup(g1Size, g1Values, half, g1Targets[t % g1Targets.length])
+      if (g1Qtys) break
     }
-    if (!valid || remaining <= 0) continue
 
-    // chip[1] (BB chip) takes as many as will fit
-    q[1] = Math.floor(remaining / units[1])
-    remaining -= q[1] * units[1]
+    let g2Qtys: number[] | null = null
+    if (g2Size > 0) {
+      for (let t = i; t < g2Targets.length + i; t++) {
+        g2Qtys = solveGroup(g2Size, g2Values, half, g2Targets[t % g2Targets.length])
+        if (g2Qtys) break
+      }
+    } else {
+      g2Qtys = []
+    }
 
-    // chip[0] gets the target plus any leftover (should be 0 for nice multiples)
-    q[0] = q0Target + Math.round(remaining)
-    if (q[0] <= 0 || q[1] <= 0) continue
+    if (!g1Qtys || !g2Qtys) continue
 
-    // Verify exact total
-    const totalUnits = q.reduce((sum, qty, i) => sum + qty * units[i], 0)
-    if (Math.abs(totalUnits - N) > 0.01) continue
-
-    results.push({ quantities: q, name })
+    const allQtys = [...g1Qtys, ...g2Qtys]
+    results.push({ quantities: allQtys, name: NAMES[i] })
   }
 
-  return results
+  // Deduplicate
+  return results.filter((r, i) =>
+    results.findIndex(s => s.quantities.every((v, j) => v === r.quantities[j])) === i
+  )
 }
 
 export function calculateCombinations(
@@ -134,10 +191,7 @@ export function calculateCombinations(
   const sorted = [...chips].sort((a, b) => a - b)
   const n = sorted.length
 
-  // Step 1: assign dollar values based on blinds
   const values = assignChipValues(n, smallBlind, bigBlind)
-
-  // Step 2: compute quantity combinations
   const combos = computeQuantityCombinations(n, values, buyIn)
 
   return combos.map(({ quantities, name }, idx) => {

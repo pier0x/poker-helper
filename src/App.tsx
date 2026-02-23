@@ -151,7 +151,7 @@ export default function App() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Poker Chip Calculator</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Set your blinds and buy-in to get exact chip distributions.
+            Set your blinds and buy-in. Small chips cover half the buy-in, large chips cover the other half.
           </p>
         </div>
 
