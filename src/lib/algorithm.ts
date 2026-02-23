@@ -13,29 +13,15 @@ export interface Combination {
   actualTotal: number
 }
 
-// Snap a value to the nearest "nice" poker chip dollar value
-const NICE_VALUES = [0.01, 0.02, 0.05, 0.10, 0.20, 0.25, 0.50, 1, 2, 5, 10, 25, 50, 100]
-
-function snapToNice(value: number): number {
-  if (value <= 0) return 0.01
-  let closest = NICE_VALUES[0]
-  let minDiff = Math.abs(Math.log(value / closest))
-  for (const v of NICE_VALUES) {
-    const diff = Math.abs(Math.log(value / v))
-    if (diff < minDiff) {
-      minDiff = diff
-      closest = v
-    }
-  }
-  return closest
-}
-
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-// Generate quantity templates based on number of chip denominations.
-// Quantities decrease for larger chips (prioritize small chips).
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000
+}
+
+// Generate quantity templates: more small chips, fewer large chips
 function generateQuantityTemplates(n: number): { quantities: number[]; name: string }[] {
   const configs = [
     { base: 20, decay: 0.55, name: 'Heavy Small' },
@@ -63,22 +49,33 @@ export function calculateCombinations(
 
   return templates.map(({ quantities, name }, idx) => {
     // Proportional scaling: value[i] = k * chip[i]
-    // k = buyIn / sum(quantities[i] * chip[i])
+    // k = buyIn / sum(q[i] * chip[i])
+    // This guarantees: sum(q[i] * value[i]) = buyIn exactly (in ideal math)
     const denomSum = sorted.reduce((sum, chip, i) => sum + quantities[i] * chip, 0)
     const k = buyIn / denomSum
 
-    // Snap values to nice numbers
-    const allocations: ChipAllocation[] = sorted.map((chip, i) => {
-      const rawValue = k * chip
-      const valuePerChip = snapToNice(rawValue)
-      const quantity = quantities[i]
-      return {
-        denomination: chip,
-        quantity,
-        valuePerChip,
-        totalValue: round2(quantity * valuePerChip),
-      }
-    })
+    // Compute per-chip values rounded to 4dp
+    const values = sorted.map(chip => round4(k * chip))
+
+    // Compute per-allocation totals rounded to 2dp (cents)
+    const subTotals = values.map((v, i) => round2(quantities[i] * v))
+
+    // Running total (may differ from buyIn by a few cents due to rounding)
+    const runningTotal = round2(subTotals.reduce((s, t) => s + t, 0))
+    const diff = round2(buyIn - runningTotal)
+
+    // Absorb any cent-rounding gap into the smallest chip's subtotal
+    subTotals[0] = round2(subTotals[0] + diff)
+
+    // Recompute the smallest chip's per-chip value from the adjusted subtotal
+    values[0] = round4(subTotals[0] / quantities[0])
+
+    const allocations: ChipAllocation[] = sorted.map((chip, i) => ({
+      denomination: chip,
+      quantity: quantities[i],
+      valuePerChip: values[i],
+      totalValue: subTotals[i],
+    }))
 
     const actualTotal = round2(allocations.reduce((sum, a) => sum + a.totalValue, 0))
 

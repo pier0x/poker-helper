@@ -18,9 +18,6 @@ function formatDollar(amount: number): string {
 
 function CombinationCard({ combo, index }: { combo: Combination; index: number }) {
   const [expanded, setExpanded] = useState(true)
-  const diff = Math.abs(combo.actualTotal - combo.targetTotal)
-  const isClose = diff < 0.5
-
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -30,8 +27,8 @@ function CombinationCard({ combo, index }: { combo: Combination; index: number }
             <CardTitle className="text-base">{combo.name}</CardTitle>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-semibold ${isClose ? 'text-green-600' : 'text-amber-600'}`}>
-              ≈ {formatDollar(combo.actualTotal)}
+            <span className="text-sm font-semibold text-green-600">
+              {formatDollar(combo.actualTotal)}
             </span>
             <Button
               variant="ghost"
@@ -72,19 +69,13 @@ function CombinationCard({ combo, index }: { combo: Combination; index: number }
               <tfoot>
                 <tr>
                   <td colSpan={3} className="pt-3 text-right font-semibold text-slate-700">Total</td>
-                  <td className={`pt-3 text-right font-bold ${isClose ? 'text-green-600' : 'text-amber-600'}`}>
+                  <td className="pt-3 text-right font-bold text-green-600">
                     {formatDollar(combo.actualTotal)}
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
-          {!isClose && (
-            <p className="mt-3 text-xs text-amber-600 bg-amber-50 rounded-md px-3 py-2">
-              ⚠️ Values were rounded to common denominations. Actual total differs by{' '}
-              {formatDollar(diff)} from target. Adjust quantities slightly to compensate.
-            </p>
-          )}
         </CardContent>
       )}
     </Card>
@@ -220,7 +211,7 @@ export default function App() {
               <CombinationCard key={combo.id} combo={combo} index={i} />
             ))}
             <p className="text-xs text-slate-400 text-center pt-2">
-              Values are snapped to common denominations. Totals are approximate.
+              Smallest chip value is adjusted slightly so each distribution totals exactly {formatDollar(buyInNum)}.
             </p>
           </div>
         )}
