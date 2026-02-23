@@ -140,6 +140,9 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
 }
 
 function SummaryTable({ summaries }: { summaries: PlayerSummary[] }) {
+  const totalBuyIn = Math.round(summaries.reduce((s, p) => s + p.totalBuyIn, 0) * 100) / 100
+  const totalCashOut = Math.round(summaries.reduce((s, p) => s + p.finalBalance, 0) * 100) / 100
+
   return (
     <table className="w-full text-sm">
       <thead>
@@ -162,6 +165,14 @@ function SummaryTable({ summaries }: { summaries: PlayerSummary[] }) {
           </tr>
         ))}
       </tbody>
+      <tfoot>
+        <tr className="border-t border-slate-200">
+          <td className="pt-3 font-semibold text-slate-700">Total</td>
+          <td className="pt-3 text-right font-semibold text-slate-700">{formatDollar(totalBuyIn)}</td>
+          <td className="pt-3 text-right font-semibold text-slate-700">{formatDollar(totalCashOut)}</td>
+          <td className="pt-3 text-right font-semibold text-slate-400">—</td>
+        </tr>
+      </tfoot>
     </table>
   )
 }
