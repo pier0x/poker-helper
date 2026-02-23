@@ -241,12 +241,12 @@ export default function App() {
                     <Badge
                       key={chip}
                       variant="secondary"
-                      className="cursor-pointer gap-1 pr-1.5 hover:bg-slate-200"
+                      className="gap-1 pr-1.5 hover:bg-slate-200"
                     >
                       <span className="font-mono">{chip}</span>
                       <button
                         onClick={() => removeChip(chip)}
-                        className="ml-0.5 rounded-sm opacity-60 hover:opacity-100 focus:outline-none"
+                        className="cursor-pointer ml-0.5 rounded-sm opacity-60 hover:opacity-100 focus:outline-none"
                       >
                         <X className="h-3 w-3" />
                       </button>
